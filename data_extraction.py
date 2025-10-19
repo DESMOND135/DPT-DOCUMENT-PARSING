@@ -44,35 +44,25 @@ st.markdown("""
 st.markdown('<div class="main-header">📄 Document Table Extractor</div>', unsafe_allow_html=True)
 
 def setup_api_key():
-    """Setup API key for both local and Streamlit Cloud environments"""
+    """Setup API key safely for both local and Streamlit Cloud environments"""
     try:
         # First try to get API key from Streamlit secrets (for Streamlit Cloud)
         if 'VISION_AGENT_API_KEY' in st.secrets:
-            os.environ['VISION_AGENT_API_KEY'] = st.secrets['VISION_AGENT_API_KEY']
-            st.sidebar.success("✅ API Key loaded from Streamlit Secrets")
-            return True
+            api_key = st.secrets['VISION_AGENT_API_KEY']
+            # Set environment variable safely
+            os.environ['VISION_AGENT_API_KEY'] = str(api_key)
+            return True, "✅ API Key loaded from Streamlit Secrets"
         else:
             # Fallback to .env file (for local development)
             load_dotenv()
             api_key = os.getenv("LANDING_API_KEY")
             if api_key:
-                os.environ['VISION_AGENT_API_KEY'] = api_key
-                st.sidebar.info("ℹ️ API Key loaded from .env file")
-                return True
+                os.environ['VISION_AGENT_API_KEY'] = str(api_key)
+                return True, "ℹ️ API Key loaded from .env file"
             else:
-                st.sidebar.error("❌ No API key found. Please check your configuration.")
-                return False
+                return False, "❌ No API key found. Please check your configuration."
     except Exception as e:
-        st.sidebar.error(f"❌ Error setting up API key: {str(e)}")
-        return False
-
-# Sidebar for configuration
-with st.sidebar:
-    st.header("Configuration")
-    st.info("Upload a PDF document to extract tables using AI-powered parsing.")
-    
-    # Setup API key
-    api_key_verified = setup_api_key()
+        return False, f"❌ Error setting up API key: {str(e)}"
 
 def validate_file(file):
     """Validate uploaded file"""
@@ -87,6 +77,11 @@ def validate_file(file):
 def extract_tables_from_pdf(file_path):
     """Extract tables from PDF using your existing logic"""
     try:
+        # Check if API key is set
+        if 'VISION_AGENT_API_KEY' not in os.environ:
+            st.error("API key not configured")
+            return [], 0
+            
         results = parse(file_path)
         all_dataframes = []
         
@@ -108,24 +103,40 @@ def extract_tables_from_pdf(file_path):
         return [], 0
 
 def main():
-    # Check if API key is available
-    if not api_key_verified:
+    # Setup API key first
+    api_key_success, api_key_message = setup_api_key()
+    
+    # Sidebar for configuration
+    with st.sidebar:
+        st.header("Configuration")
+        st.info("Upload a PDF document to extract tables using AI-powered parsing.")
+        
+        # Display API key status
+        if api_key_success:
+            st.success(api_key_message)
+        else:
+            st.error(api_key_message)
+
+    # Check if API key is available before proceeding
+    if not api_key_success:
         st.error("""
-        ❌ API Key not configured properly. Please setup your API key:
+        ## 🔑 API Key Configuration Required
         
         **For Streamlit Cloud:**
-        1. Go to your app settings
-        2. Click on 'Secrets'
-        3. Add your API key:
-        ```
+        1. Go to your app dashboard
+        2. Click on '⋮' → 'Settings' → 'Secrets'
+        3. Add your API key in TOML format:
+        ```toml
         VISION_AGENT_API_KEY = "your_actual_api_key_here"
         ```
         
         **For Local Development:**
-        - Make sure you have a `.env` file with:
-        ```
+        - Create a `.env` file in your project root with:
+        ```env
         LANDING_API_KEY=your_actual_api_key_here
         ```
+        
+        **Note:** Make sure your API key is valid and has the necessary permissions.
         """)
         return
 
@@ -230,11 +241,15 @@ def main():
                 
                 except Exception as e:
                     st.error(f"❌ Error processing document: {str(e)}")
+                    st.info("This might be due to API key issues or network connectivity. Please check your configuration.")
                 
                 finally:
                     # Clean up temporary file
-                    if os.path.exists(tmp_file_path):
-                        os.unlink(tmp_file_path)
+                    try:
+                        if os.path.exists(tmp_file_path):
+                            os.unlink(tmp_file_path)
+                    except:
+                        pass  # Ignore cleanup errors
     
     else:
         # Instructions when no file is uploaded
