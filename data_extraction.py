@@ -3,16 +3,23 @@ import pandas as pd
 import re
 import os
 from io import StringIO
-from dotenv import load_dotenv
-from agentic_doc.parse import parse
 import tempfile
 
-# Set page configuration
+# Set page configuration - this should be the first Streamlit command
 st.set_page_config(
     page_title="Document Table Extractor",
     page_icon="📄",
     layout="wide"
 )
+
+# Try to import dependencies with error handling
+try:
+    from dotenv import load_dotenv
+    from agentic_doc.parse import parse
+    DEPENDENCIES_AVAILABLE = True
+except ImportError as e:
+    st.error(f"❌ Missing dependencies: {e}")
+    DEPENDENCIES_AVAILABLE = False
 
 # Custom CSS for better styling
 st.markdown("""
@@ -49,18 +56,19 @@ def setup_api_key():
         # First try to get API key from Streamlit secrets (for Streamlit Cloud)
         if 'VISION_AGENT_API_KEY' in st.secrets:
             api_key = st.secrets['VISION_AGENT_API_KEY']
-            # Set environment variable safely
             os.environ['VISION_AGENT_API_KEY'] = str(api_key)
             return True, "✅ API Key loaded from Streamlit Secrets"
-        else:
-            # Fallback to .env file (for local development)
+        
+        # Fallback to .env file (for local development)
+        if DEPENDENCIES_AVAILABLE:
             load_dotenv()
             api_key = os.getenv("LANDING_API_KEY")
             if api_key:
                 os.environ['VISION_AGENT_API_KEY'] = str(api_key)
-                return True, "ℹ️ API Key loaded from .env file"
-            else:
-                return False, "❌ No API key found. Please check your configuration."
+                return True, "✅ API Key loaded from .env file"
+        
+        return False, "❌ No API key found in secrets or .env file"
+        
     except Exception as e:
         return False, f"❌ Error setting up API key: {str(e)}"
 
@@ -75,7 +83,7 @@ def validate_file(file):
     return False, "No file uploaded"
 
 def extract_tables_from_pdf(file_path):
-    """Extract tables from PDF using your existing logic"""
+    """Extract tables from PDF using agentic_doc"""
     try:
         # Check if API key is set
         if 'VISION_AGENT_API_KEY' not in os.environ:
@@ -103,12 +111,24 @@ def extract_tables_from_pdf(file_path):
         return [], 0
 
 def main():
-    # Setup API key first
+    # Check dependencies first
+    if not DEPENDENCIES_AVAILABLE:
+        st.error("""
+        ## 📦 Required Dependencies Missing
+        
+        Please make sure you have installed all required packages:
+        ```bash
+        pip install streamlit pandas python-dotenv agentic-doc
+        ```
+        """)
+        return
+    
+    # Setup API key
     api_key_success, api_key_message = setup_api_key()
     
     # Sidebar for configuration
     with st.sidebar:
-        st.header("Configuration")
+        st.header("⚙️ Configuration")
         st.info("Upload a PDF document to extract tables using AI-powered parsing.")
         
         # Display API key status
@@ -116,33 +136,50 @@ def main():
             st.success(api_key_message)
         else:
             st.error(api_key_message)
+            
+        st.markdown("---")
+        st.markdown("### 🔑 API Key Setup")
+        st.markdown("""
+        **Streamlit Cloud:**
+        - Go to Settings → Secrets
+        - Add: `VISION_AGENT_API_KEY = "your_key"`
+        
+        **Local Development:**
+        - Create `.env` file
+        - Add: `LANDING_API_KEY=your_key`
+        """)
 
     # Check if API key is available before proceeding
     if not api_key_success:
         st.error("""
         ## 🔑 API Key Configuration Required
         
-        **For Streamlit Cloud:**
-        1. Go to your app dashboard
-        2. Click on '⋮' → 'Settings' → 'Secrets'
-        3. Add your API key in TOML format:
+        Please setup your API key to use this application:
+        
+        **For Streamlit Cloud Deployment:**
+        1. Go to your app dashboard at [share.streamlit.io](https://share.streamlit.io)
+        2. Click on your app
+        3. Click the **'⋮'** (three dots) → **'Settings'** → **'Secrets'**
+        4. Add your API key in this exact format:
         ```toml
         VISION_AGENT_API_KEY = "your_actual_api_key_here"
         ```
         
         **For Local Development:**
-        - Create a `.env` file in your project root with:
+        1. Create a file called `.env` in your project root folder
+        2. Add this line to the file:
         ```env
         LANDING_API_KEY=your_actual_api_key_here
         ```
+        3. Make sure `.env` is in your `.gitignore` to keep it secret
         
-        **Note:** Make sure your API key is valid and has the necessary permissions.
+        **Note:** Replace `"your_actual_api_key_here"` with your real API key from Landing AI.
         """)
         return
 
     # File upload section
     uploaded_file = st.file_uploader(
-        "Choose a PDF file", 
+        "📤 Choose a PDF file", 
         type="pdf",
         help="Upload a PDF document to extract tables"
     )
@@ -158,13 +195,13 @@ def main():
         # Display file info
         col1, col2 = st.columns(2)
         with col1:
-            st.info(f"**File name:** {uploaded_file.name}")
+            st.info(f"**📄 File name:** {uploaded_file.name}")
         with col2:
-            st.info(f"**File size:** {uploaded_file.size / 1024:.2f} KB")
+            st.info(f"**📏 File size:** {uploaded_file.size / 1024:.2f} KB")
         
         # Extract tables button
-        if st.button("Extract Tables", type="primary", use_container_width=True):
-            with st.spinner("Parsing document and extracting tables..."):
+        if st.button("🚀 Extract Tables", type="primary", use_container_width=True):
+            with st.spinner("🔍 Parsing document and extracting tables..."):
                 # Save uploaded file to temporary location
                 with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
                     tmp_file.write(uploaded_file.getvalue())
@@ -210,7 +247,7 @@ def main():
                                 # Download button for individual table
                                 csv_data = df.to_csv(index=False)
                                 st.download_button(
-                                    label=f"Download Table {i+1} as CSV",
+                                    label=f"📥 Download Table {i+1} as CSV",
                                     data=csv_data,
                                     file_name=f"table_{i+1}_page_{df['source_page'].iloc[0]}.csv",
                                     mime="text/csv",
@@ -225,7 +262,7 @@ def main():
                             combined_csv = combined_df.to_csv(index=False)
                             
                             st.download_button(
-                                label="Download All Tables as CSV",
+                                label="📥 Download All Tables as CSV",
                                 data=combined_csv,
                                 file_name="all_extracted_tables.csv",
                                 mime="text/csv",
@@ -241,7 +278,7 @@ def main():
                 
                 except Exception as e:
                     st.error(f"❌ Error processing document: {str(e)}")
-                    st.info("This might be due to API key issues or network connectivity. Please check your configuration.")
+                    st.info("This might be due to API key issues, network connectivity, or document format. Please check your configuration and try again.")
                 
                 finally:
                     # Clean up temporary file
@@ -256,10 +293,10 @@ def main():
         st.markdown("""
         ### 📖 How to Use This App
         
-        1. **Upload a PDF file** using the file uploader above
-        2. **Click the 'Extract Tables' button** to process the document
-        3. **View extracted tables** in interactive dataframes
-        4. **Download individual tables** or all data as CSV files
+        1. **📤 Upload a PDF file** using the file uploader above
+        2. **🚀 Click the 'Extract Tables' button** to process the document
+        3. **📊 View extracted tables** in interactive dataframes
+        4. **💾 Download individual tables** or all data as CSV files
         
         ### 🔧 Features
         
@@ -274,6 +311,7 @@ def main():
         - PDF documents with tabular data
         - Valid API key configured in Streamlit Secrets or .env file
         - File size under 50MB
+        - Active internet connection for API calls
         """)
 
 if __name__ == "__main__":
