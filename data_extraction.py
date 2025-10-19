@@ -43,13 +43,36 @@ st.markdown("""
 # App title
 st.markdown('<div class="main-header">📄 Document Table Extractor</div>', unsafe_allow_html=True)
 
+def setup_api_key():
+    """Setup API key for both local and Streamlit Cloud environments"""
+    try:
+        # First try to get API key from Streamlit secrets (for Streamlit Cloud)
+        if 'VISION_AGENT_API_KEY' in st.secrets:
+            os.environ['VISION_AGENT_API_KEY'] = st.secrets['VISION_AGENT_API_KEY']
+            st.sidebar.success("✅ API Key loaded from Streamlit Secrets")
+            return True
+        else:
+            # Fallback to .env file (for local development)
+            load_dotenv()
+            api_key = os.getenv("LANDING_API_KEY")
+            if api_key:
+                os.environ['VISION_AGENT_API_KEY'] = api_key
+                st.sidebar.info("ℹ️ API Key loaded from .env file")
+                return True
+            else:
+                st.sidebar.error("❌ No API key found. Please check your configuration.")
+                return False
+    except Exception as e:
+        st.sidebar.error(f"❌ Error setting up API key: {str(e)}")
+        return False
+
 # Sidebar for configuration
 with st.sidebar:
     st.header("Configuration")
     st.info("Upload a PDF document to extract tables using AI-powered parsing.")
     
-    # API key verification (optional)
-    api_key_verified = st.checkbox("API Key Verified", value=True, help="Your API key is loaded from .env file")
+    # Setup API key
+    api_key_verified = setup_api_key()
 
 def validate_file(file):
     """Validate uploaded file"""
@@ -85,6 +108,27 @@ def extract_tables_from_pdf(file_path):
         return [], 0
 
 def main():
+    # Check if API key is available
+    if not api_key_verified:
+        st.error("""
+        ❌ API Key not configured properly. Please setup your API key:
+        
+        **For Streamlit Cloud:**
+        1. Go to your app settings
+        2. Click on 'Secrets'
+        3. Add your API key:
+        ```
+        VISION_AGENT_API_KEY = "your_actual_api_key_here"
+        ```
+        
+        **For Local Development:**
+        - Make sure you have a `.env` file with:
+        ```
+        LANDING_API_KEY=your_actual_api_key_here
+        ```
+        """)
+        return
+
     # File upload section
     uploaded_file = st.file_uploader(
         "Choose a PDF file", 
@@ -213,13 +257,9 @@ def main():
         ### ⚠️ Requirements
         
         - PDF documents with tabular data
-        - Valid API key in your `.env` file
+        - Valid API key configured in Streamlit Secrets or .env file
         - File size under 50MB
         """)
 
 if __name__ == "__main__":
-    # Load environment variables
-    load_dotenv()
-    os.environ['VISION_AGENT_API_KEY'] = os.getenv("LANDING_API_KEY")
-    
     main()
